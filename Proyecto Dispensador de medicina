@@ -1,0 +1,317 @@
+#include <LiquidCrystal_I2C.h> // Incluir la libreria antes instalada
+#include <Arduino.h>
+#include <Wire.h>
+#include <Keypad.h>
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <UniversalTelegramBot.h>
+#include <ArduinoJson.h>
+
+// Configurar el tiempo de LCD que se va a usar con la intrucción 
+const uint8_t Columnas = 20;
+const uint8_t Filas = 4;
+LiquidCrystal_I2C lcd(PCF8574_ADDR_A21_A11_A01,4,5,6,16,11,12,13,14,POSITIVE);  // configuración del LCD a usar(dirección, Columnas, filas) 
+
+const uint8_t ROWS = 4;
+const uint8_t COLS = 4;
+char keys[ROWS][COLS] = {
+  { '1', '2', '3', 'A' },
+  { '4', '5', '6', 'B' },
+  { '7', '8', '9', 'C' },
+  { '?', '0', '#', 'D' }
+};
+uint8_t colPins[COLS] = { 16, 4, 2, 15 };
+uint8_t rowPins[ROWS] = { 19, 18, 5, 17 };
+Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
+
+
+int LED1=13; //Declaración del puerto en cada posicion para cada led
+int LED2=12;
+int LED3=14;
+
+int PUSH1=27;
+int PUSH2=26;
+int PUSH3=25;
+int PUSHr=33;
+
+char key;
+
+const String contrasena = "000000";
+String inputPassword = "";
+String inputMed = "";
+
+
+int intentos = 0;
+const int intentosMaximos = 3;
+
+//Reemplazar con datos de tu red WiFi
+const char* ssid= "Yanell";
+const char* password= "yanell1223";
+//Token de telegram del bot
+#define token_bot "6387884182:AAGpz5UweChPwMZCov3FB53aKQTdUJE90HA"
+
+WiFiClientSecure Client;
+UniversalTelegramBot bot(token_bot,Client);
+
+int botRequestDelay= 500;
+unsigned long lastTimeBotRan;
+int dispense=0;
+
+
+void handleNewMessages(int numNewMessages){
+    Serial.println("handleNewMessages");
+    Serial.println(String(numNewMessages));
+
+    for (int i=0; i<numNewMessages;i++){
+        String chat_id = String(bot.messages[i].chat_id);
+        String text = bot.messages[i].text;
+
+        String from_name =bot.messages[i].from_name;
+        if(from_name=="") from_name="Guest";
+
+        if(text=="/start"){
+            String welcome = "Bienvenido, " + from_name + ".\n";
+            welcome += "Comandos disponibles.\n\n";
+            welcome += "/Dispensar para obtener una medicina \n";
+            bot.sendMessage(chat_id, welcome, "");
+        }
+
+        if (text == "/Dispensar"){
+            digitalWrite(LED3,HIGH);
+            delay(1000);
+            digitalWrite(LED3,LOW);
+            dispense=1;
+            bot.sendMessage(chat_id,"Medicamento dispensado");
+        }
+    }
+}
+
+void setup() {
+  Serial.begin(9600);
+  Serial.println();
+
+  lcd.begin(Columnas,Filas); // Se inicializa el LCD                    
+  lcd.backlight(); // Controla si se enciende o no la Luz de fondo
+  pinMode(LED1, OUTPUT); // Declaracion de pin para cada salida
+  pinMode(LED2, OUTPUT);  
+  pinMode(LED3, OUTPUT);
+  pinMode(PUSH1, INPUT); // Declaracion de pin para cada entrada
+  pinMode(PUSH2, INPUT);
+  pinMode(PUSH3, INPUT);
+  pinMode(PUSHr, INPUT);
+
+  Serial.print("Conectar al wifi ");
+  Serial.print(ssid);
+    // Connect to Wi-Fi
+  WiFi.begin(ssid, password);
+  Client.setCACert(TELEGRAM_CERTIFICATE_ROOT);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(500);
+  }
+  Serial.print("\nWifi conectado: Direccion IP: ");
+  Serial.println(WiFi.localIP());
+}
+
+void loop(){
+  if (millis() > lastTimeBotRan + botRequestDelay)  {
+    int numNewMessages = bot.getUpdates(bot.last_message_received + 1);
+
+    while(numNewMessages) {
+      Serial.println("got response");
+      handleNewMessages(numNewMessages);
+      numNewMessages = bot.getUpdates(bot.last_message_received + 1);
+    }
+    lastTimeBotRan = millis();
+  }
+
+   lcd.setCursor(0,0);
+   lcd.print("Dispensador de");
+   lcd.setCursor(1,1);
+   lcd.print("medicamentos");
+   lcd.setCursor(4,2);
+   lcd.print("- Angel Zumba");
+   lcd.setCursor(4,3);
+   lcd.print("- Yanell Centeno");
+   delay(6000);
+   lcd.clear();
+   lcd.setCursor(0,0);
+   lcd.print("Ingresar Clave:"); 
+   lcd.setCursor(0,1);
+ 
+   while(1){
+    key=keypad.getKey();
+    if (key){
+    if(key>='0' && key<='9' ){
+    inputPassword += key; // Agrega la tecla presionada a la variable inputPassword
+    lcd.setCursor(inputPassword.length()-1,1); // Establece la posición del cursor en la columna actual y la fila 1
+    lcd.print("*"); // Imprime el asterisco en pantalla
+    }  
+
+ if (inputPassword.length() == 6) { // Si se han ingresado 6 dígitos para la contraseña
+    delay(500);
+    lcd.clear(); // Espera 500ms para que el usuario suelte el último botón presionado
+    if (inputPassword == contrasena) { // Si la contraseña ingresada es igual a la contraseña predeterminada
+      intentos=0;
+      lcd.clear(); // Limpia la pantalla del LCD
+      lcd.setCursor(0,0); // Establece la posición del cursor en la columna 0 y la fila 0
+      lcd.print("Clave Correcta");
+      delay(2000);
+      lcd.clear();
+      lcd.setCursor(0,0); // Establece la posición del cursor en la columna 0 y la fila 0
+      lcd.print("Menu (usar botones)");
+      lcd.setCursor(0,1);
+      lcd.print("1.Registrar medicina");
+      lcd.setCursor(0,2);
+      lcd.print("2.Control de medicin");
+      lcd.setCursor(0,3);
+      lcd.print("3.Dispensar medicina");
+      
+      while(1){
+        int buttonState1=digitalRead(PUSH1);
+        int buttonState2=digitalRead(PUSH2);
+        int buttonState3=digitalRead(PUSH3);
+        int buttonStateR=digitalRead(PUSHr);
+
+        if (buttonState1 == HIGH){
+          if (key){
+            inputMed = key;
+          }
+          digitalWrite(LED1, HIGH);
+          lcd.clear();
+          lcd.setCursor(0,0); 
+          lcd.print("Seleccione medicina:");
+          lcd.setCursor(0,1); 
+          lcd.print("1. Paracetamol");          
+          lcd.setCursor(0,2); 
+          lcd.print("2. Aspirina");
+          lcd.setCursor(0,3); 
+          lcd.print("3. Buprex");
+
+          buttonState1=digitalRead(PUSH1);
+          buttonState2=digitalRead(PUSH2);
+          buttonState3=digitalRead(PUSH3);
+          buttonStateR=digitalRead(PUSHr);
+          
+          if (buttonState1 == HIGH){
+            lcd.clear();
+            lcd.setCursor(0,0); 
+            lcd.print("Paracetamol");
+            lcd.setCursor(1,1);
+            lcd.print("# de casillero:"); //ingresar con teclado
+            lcd.setCursor(1,2); 
+            lcd.print("C/x horas:"); //ingresar con teclado
+            lcd.setCursor(0,3); 
+            lcd.print("(volver: boton R)");
+
+          }
+          if (buttonState2 == HIGH){
+            lcd.clear();
+            lcd.setCursor(0,0); 
+            lcd.print("Aspirina");
+            lcd.setCursor(1,1);
+            lcd.print("# de casillero:"); //ingresar con teclado
+            lcd.setCursor(1,2); 
+            lcd.print("C/x horas:"); //ingresar con teclado
+            lcd.setCursor(0,3); 
+            lcd.print("(volver: boton R)");
+
+          }
+          if (buttonState3 == HIGH){
+            lcd.clear();
+            lcd.setCursor(0,0); 
+            lcd.print("Buprex");
+            lcd.setCursor(1,1);
+            lcd.print("# de casillero:"); //ingresar con teclado
+            lcd.setCursor(1,2); 
+            lcd.print("C/x horas:"); //ingresar con teclado
+            lcd.setCursor(0,3); 
+            lcd.print("(volver: boton R)");
+            
+          }
+          digitalWrite(LED1, LOW);
+        }
+
+        if (buttonState2 == HIGH){
+          digitalWrite(LED2, HIGH);
+          lcd.clear();
+          lcd.setCursor(0,0);
+          lcd.print("Uso:x / 6 casilleros");          
+          lcd.setCursor(0,3);
+          lcd.print("(volver: boton R)");
+          delay(1000);
+          digitalWrite(LED2, LOW);
+        }
+
+        if (buttonState3 == HIGH){
+          digitalWrite(LED3, HIGH);
+          lcd.clear();
+          lcd.setCursor(0,0);
+          lcd.print("Dispensando...");          
+          delay(1000);
+          digitalWrite(LED3, LOW);
+          
+        }
+
+        if (buttonStateR == HIGH){
+          delay(1000);
+          lcd.clear();
+          lcd.setCursor(0,0);
+          lcd.print("Menu (usar botones)");
+          lcd.setCursor(0,1);
+          lcd.print("1.Registrar medicina");
+          lcd.setCursor(0,2);
+          lcd.print("2.Control de medicin");
+          lcd.setCursor(0,3);
+          lcd.print("3.Dispensar medicina");  
+          
+        }
+      }   
+
+    }
+    else { // Si la contraseña ingresada es diferente a la contraseña predeterminada
+      lcd.clear(); // Limpia la pantalla del LCD
+      lcd.setCursor(0,0); // Establece la posición del cursor en la columna 0 y la fila 0
+      lcd.print("Clave Incorrecta");
+      lcd.setCursor(0,1); // Establece la posición del cursor en la columna 0 y la fila 0
+      lcd.print(intentos+1);
+      lcd.setCursor(3,1); // Establece la posición del cursor en la columna 0 y la fila 0
+      lcd.print("de 3 intentos");
+      delay(1000);
+      intentos++;
+
+
+      if (intentos >= intentosMaximos) {
+      lcd.clear();
+      lcd.print("!!!!SISTEMA!!!!");
+      lcd.setCursor(0,1);
+      lcd.print("!!!BLOQUEADO!!!");
+      digitalWrite(LED2, HIGH);
+
+      while (true) {
+        digitalWrite(LED1, HIGH);
+        delay(500);
+        digitalWrite(LED1, LOW);
+        digitalWrite(LED3, HIGH);
+        delay(500);
+        digitalWrite(LED3, LOW);
+        digitalWrite(LED2, LOW);
+        delay(500);
+        digitalWrite(LED2, HIGH);
+      }
+    } // Imprime en pantalla "Clave Incorrecta"
+    }
+
+    inputPassword = ""; // Reinicia la variable inputPassword
+    delay(1000); // Espera 1 segundo antes de continuar
+    lcd.clear(); // Limpia la pantalla del LCD
+    lcd.setCursor(0,0); // Establece la posición del cursor en la columna 0 y la fila 0
+    lcd.print("Ingresar clave: "); // Imprime en pantalla el mensaje "Ingrese clave:"
+    digitalWrite(LED1, LOW); // Apaga el LED verde
+    digitalWrite(LED3, LOW);
+ }
+   }
+   }  
+
+}
